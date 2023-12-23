@@ -4,10 +4,10 @@ import json
 import pymongo
 from flask import jsonify, request, make_response, abort, url_for  # noqa; F401
 from pymongo import MongoClient
-from bson import json_util
 from pymongo.errors import OperationFailure
 from pymongo.results import InsertOneResult
 from bson.objectid import ObjectId
+from bson import json_util
 import sys
 
 SITE_ROOT = os.path.realpath(os.path.dirname(__file__))
@@ -51,3 +51,49 @@ def parse_json(data):
 ######################################################################
 # INSERT CODE HERE
 ######################################################################
+
+@app.route("/health")
+def health():
+    return jsonify(status="OK"), 200
+
+@app.route("/count")
+def count():
+    return {"count": len(songs_list)}
+
+@app.route("/song", methods=["GET"])
+def songs():
+    all_songs = list(db.songs.find({}))
+    return {"songs": json.dumps(all_songs, default=json_util.default)}, 200
+
+@app.route("/song/<int:id>", methods=["GET"])
+def get_song_by_id(id):
+    need_song = db.songs.find_one({"id": id})
+    if not need_song:
+        return {"message": "song with id not found"}, 404
+    return json.dumps(need_song, default=json_util.default), 200
+
+@app.route("/song", methods=["POST"])
+def create_song():
+    new_song = request.get_json()
+    exist_song = db.songs.find_one({"id": new_song["id"]})
+    if exist_song:
+        return {"message": f"song with id {new_song['id']} already present"}, 302
+    db.songs.insert_one(new_song)
+    return json.dumps(new_song, default=json_util.default), 201
+
+@app.route("/song/<int:id>", methods=["PUT"])
+def update_song(id):
+    new_song_data = request.get_json()
+    exist_song = db.songs.find_one({"id": id})
+    if not exist_song:
+        return {"message": "song not found"}, 404
+    exist_song.update(new_song_data)
+    db.songs.update_one({"id": id}, {"$set": exist_song})
+    return json.dumps(exist_song, default=json_util.default), 201
+
+@app.route("/song/<int:id>", methods=["DELETE"])
+def delete_song(id):
+    delete_result = db.songs.delete_one({"id": id})
+    if delete_result.deleted_count == 0:
+        return {"message": "song not found"}, 404
+    return {"message": f"song with id {id} was deleted"}, 204
